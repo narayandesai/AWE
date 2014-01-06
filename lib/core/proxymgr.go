@@ -104,6 +104,10 @@ func (qm *ProxyMgr) handleWorkStatusChange(notice Notice) (err error) {
 	return
 }
 
+func (qm *ProxyMgr) FetchDataToken(workid string, clientid string) (token string, err error) {
+	return
+}
+
 //end of workunits methods
 
 //client methods
@@ -193,11 +197,19 @@ func (qm *ProxyMgr) SuspendJob(jobid string, reason string) (err error) {
 	return
 }
 
+func (qm *ProxyMgr) ResumeSuspendedJobs() (num int) {
+	return
+}
+
 func (qm *ProxyMgr) DeleteJob(jobid string) (err error) {
 	return
 }
 
 func (qm *ProxyMgr) DeleteSuspendedJobs() (num int) {
+	return
+}
+
+func (qm *ProxyMgr) DeleteZombieJobs() (num int) {
 	return
 }
 

@@ -165,6 +165,7 @@ func (job *Job) UpdateTask(task *Task) (remainTasks int, err error) {
 			job.RemainTasks -= 1
 			if job.RemainTasks == 0 {
 				job.State = JOB_STAT_COMPLETED
+				job.Info.CompletedTime = time.Now()
 			}
 		}
 	}
@@ -172,14 +173,19 @@ func (job *Job) UpdateTask(task *Task) (remainTasks int, err error) {
 	return job.RemainTasks, job.Save()
 }
 
-func LoadJob(id string) (job *Job, err error) {
-	job = new(Job)
-	if err = DB.Find(bson.M{"id": id}).One(&job); err == nil {
-		return job, nil
-	} else {
-		return nil, err
+//set token
+func (job *Job) SetDataToken(token string) {
+	job.Info.DataToken = token
+	job.Info.Auth = true
+	for _, task := range job.Tasks {
+		task.Info.DataToken = token
+		task.setTokenForIO()
 	}
-	return nil, err
+	job.Save()
+}
+
+func (job *Job) GetDataToken() (token string) {
+	return job.Info.DataToken
 }
 
 func ReloadFromDisk(path string) (err error) {

@@ -3,7 +3,7 @@ package conf
 import (
 	"flag"
 	"fmt"
-	"github.com/jaredwilkening/goconfig/config"
+	"github.com/MG-RAST/golib/goconfig/config"
 	"os"
 	"time"
 )
@@ -95,7 +95,7 @@ var (
 	CLIENT_PROFILE  = ""
 	WORKER_OVERLAP  = false
 	PRINT_APP_MSG   = false
-	AUTO_CLEAN_DIR  = false
+	AUTO_CLEAN_DIR  = true
 	CLIENT_USERNAME = "public"
 	CLIENT_PASSWORD = "public"
 

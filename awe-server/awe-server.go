@@ -10,7 +10,7 @@ import (
 	"github.com/MG-RAST/AWE/lib/logger"
 	"github.com/MG-RAST/AWE/lib/logger/event"
 	"github.com/MG-RAST/AWE/lib/user"
-	"github.com/jaredwilkening/goweb"
+	"github.com/MG-RAST/golib/goweb"
 	"os"
 )
 
@@ -93,7 +93,10 @@ func main() {
 	logger.Initialize("server")
 
 	//init db
-	db.Initialize()
+	if err := db.Initialize(); err != nil {
+		fmt.Printf("failed to initialize job db: %s\n", err.Error())
+		os.Exit(1)
+	}
 
 	//init db collection for user
 	user.Initialize()

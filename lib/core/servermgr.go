@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/MG-RAST/AWE/lib/conf"
+	e "github.com/MG-RAST/AWE/lib/errors"
 	"github.com/MG-RAST/AWE/lib/logger"
 	"github.com/MG-RAST/AWE/lib/logger/event"
 	"io/ioutil"
@@ -154,6 +155,12 @@ func (qm *ServerMgr) handleWorkStatusChange(notice Notice) (err error) {
 		if qm.workQueue.workMap[workid].State != WORK_STAT_CHECKOUT { //could be suspended
 			return
 		}
+		var MAX_RETRY int
+		if task.Info.NoRetry == true {
+			MAX_RETRY = 0
+		} else {
+			MAX_RETRY = conf.MAX_WORK_FAILURE
+		}
 		if task.State == TASK_STAT_FAIL_SKIP {
 			// A work unit for this task failed before this one arrived.
 			// User set Skip=2 so the task was just skipped. Any subsiquent
@@ -175,6 +182,7 @@ func (qm *ServerMgr) handleWorkStatusChange(notice Notice) (err error) {
 				task.RemainWork -= 1
 				if task.RemainWork == 0 {
 					task.State = TASK_STAT_COMPLETED
+					task.CompletedDate = time.Now()
 					for _, output := range task.Outputs {
 						output.GetFileSize()
 						output.DataUrl()
@@ -214,7 +222,7 @@ func (qm *ServerMgr) handleWorkStatusChange(notice Notice) (err error) {
 						qm.updateQueue()
 						// remove from the workQueue
 						qm.workQueue.Delete(workid)
-					} else if qm.workQueue.workMap[workid].Failed < conf.MAX_WORK_FAILURE {
+					} else if qm.workQueue.workMap[workid].Failed < MAX_RETRY {
 						qm.workQueue.StatusChange(workid, WORK_STAT_QUEUED)
 						logger.Event(event.WORK_REQUEUE, "workid="+workid)
 					} else { //failure time exceeds limit, suspend workunit, task, job
@@ -223,7 +231,7 @@ func (qm *ServerMgr) handleWorkStatusChange(notice Notice) (err error) {
 						qm.updateTaskWorkStatus(taskid, rank, WORK_STAT_SUSPEND)
 						qm.taskMap[taskid].State = TASK_STAT_SUSPEND
 
-						reason := fmt.Sprintf("workunit %s failed %d time(s).", workid, conf.MAX_WORK_FAILURE)
+						reason := fmt.Sprintf("workunit %s failed %d time(s).", workid, MAX_RETRY)
 						if len(notice.Notes) > 0 {
 							reason = reason + " msg from client:" + notice.Notes
 						}
@@ -311,6 +319,30 @@ func (qm *ServerMgr) ShowStatus() (qs QueueStatus) {
 }
 
 //---end of mgr methods
+
+//--workunit methds (servermgr implementation)
+func (qm *ServerMgr) FetchDataToken(workid string, clientid string) (token string, err error) {
+	//precheck if the client is registered
+	if _, hasClient := qm.clientMap[clientid]; !hasClient {
+		return "", errors.New(e.ClientNotFound)
+	}
+	if qm.clientMap[clientid].Status == CLIENT_STAT_SUSPEND {
+		return "", errors.New(e.ClientSuspended)
+	}
+	jobid, err := GetJobIdByWorkId(workid)
+	if err != nil {
+		return "", err
+	}
+	job, err := LoadJob(jobid)
+	if err != nil {
+		return "", err
+	}
+	token = job.GetDataToken()
+	if token == "" {
+		return token, errors.New("no data token set for workunit " + workid)
+	}
+	return token, nil
+}
 
 //---task methods----
 
@@ -419,7 +451,9 @@ func (qm *ServerMgr) taskEnQueue(task *Task) (err error) {
 		return err
 	}
 	task.State = TASK_STAT_QUEUED
-	qm.updateJobTask(task) //task status PENDING->QUEUED
+	task.CreatedDate = time.Now()
+	task.StartedDate = time.Now() //to-do: will be changed to the time when the first workunit is checked out
+	qm.updateJobTask(task)        //task status PENDING->QUEUED
 
 	//log event about task enqueue (TQ)
 	logger.Event(event.TASK_ENQUEUE, fmt.Sprintf("taskid=%s;totalwork=%d", task.Id, task.TotalWork))
@@ -485,7 +519,7 @@ func (qm *ServerMgr) createOutputNode(task *Task) (err error) {
 	outputs := task.Outputs
 	for name, io := range outputs {
 		logger.Debug(2, fmt.Sprintf("posting output Shock node for file %s in task %s\n", name, task.Id))
-		nodeid, err := PostNode(io, task.TotalWork)
+		nodeid, err := PostNodeWithToken(io, task.TotalWork, task.Info.DataToken)
 		if err != nil {
 			return err
 		}
@@ -639,6 +673,37 @@ func (qm *ServerMgr) DeleteSuspendedJobs() (num int) {
 	return
 }
 
+func (qm *ServerMgr) ResumeSuspendedJobs() (num int) {
+	suspendjobs := qm.GetSuspendJobs()
+	for id, _ := range suspendjobs {
+		if err := qm.ResumeSuspendedJob(id); err == nil {
+			num += 1
+		}
+	}
+	return
+}
+
+//delete jobs in db with "in-progress" state but not in the queue (zombie jobs)
+func (qm *ServerMgr) DeleteZombieJobs() (num int) {
+	dbjobs := new(Jobs)
+	q := bson.M{}
+	q["state"] = JOB_STAT_INPROGRESS
+	lim := 1000
+	off := 0
+	if err := dbjobs.GetAllLimitOffset(q, lim, off); err != nil {
+		logger.Error("DeleteZombieJobs()->GetAllLimitOffset():" + err.Error())
+		return
+	}
+	for _, dbjob := range *dbjobs {
+		if _, ok := qm.actJobs[dbjob.Id]; !ok {
+			if err := qm.DeleteJob(dbjob.Id); err == nil {
+				num += 1
+			}
+		}
+	}
+	return
+}
+
 //resubmit a suspended job
 func (qm *ServerMgr) ResumeSuspendedJob(id string) (err error) {
 	//Load job by id
@@ -662,12 +727,17 @@ func (qm *ServerMgr) ResubmitJob(id string) (err error) {
 		return errors.New("job " + id + " is already active")
 	}
 	dbjob, err := LoadJob(id)
+
 	if err != nil {
 		return errors.New("failed to load job " + err.Error())
 	}
 	if dbjob.State != JOB_STAT_INPROGRESS &&
 		dbjob.State != JOB_STAT_SUSPEND {
 		return errors.New("job state 'in-progress' or 'suspend' needed while state=" + dbjob.State)
+	}
+	for _, task := range dbjob.Tasks {
+		task.Info = dbjob.Info
+		fmt.Printf("TaskInfoInfo=%#v\n", task.Info)
 	}
 	qm.EnqueueTasksByJobId(dbjob.Id, dbjob.TaskList())
 	return

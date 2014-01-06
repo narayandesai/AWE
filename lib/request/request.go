@@ -6,7 +6,7 @@ import (
 	e "github.com/MG-RAST/AWE/lib/errors"
 	"github.com/MG-RAST/AWE/lib/logger"
 	"github.com/MG-RAST/AWE/lib/user"
-	"github.com/jaredwilkening/goweb"
+	"github.com/MG-RAST/golib/goweb"
 	"net/http"
 )
 
@@ -17,6 +17,15 @@ func Authenticate(req *http.Request) (u *user.User, err error) {
 	}
 	header := req.Header.Get("Authorization")
 	u, err = auth.Authenticate(header)
+	return
+}
+
+func RetrieveToken(req *http.Request) (token string, err error) {
+	if _, ok := req.Header["Datatoken"]; !ok {
+		err = errors.New("no token received")
+		return
+	}
+	token = req.Header.Get("Datatoken")
 	return
 }
 

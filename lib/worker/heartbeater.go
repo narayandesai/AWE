@@ -70,7 +70,9 @@ func SendHeartBeat() {
 
 func heartbeating(host string, clientid string) (msg core.HBmsg, err error) {
 	response := new(HeartbeatResponse)
-	res, err := http.Get(fmt.Sprintf("%s/client/%s?heartbeat", host, clientid))
+	targeturl := fmt.Sprintf("%s/client/%s?heartbeat", host, clientid)
+	//res, err := http.Get(targeturl)
+	res, err := httpclient.Get(targeturl, httpclient.Header{}, nil, nil)
 	logger.Debug(3, fmt.Sprintf("client %s sent a heartbeat to %s", host, clientid))
 	if err != nil {
 		return
@@ -157,6 +159,7 @@ func RegisterWithAuth(host string, profile *core.Client) (client *core.Client, e
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 	jsonstream, err := ioutil.ReadAll(resp.Body)
 	response := new(ClientResponse)
 	if err = json.Unmarshal(jsonstream, response); err != nil {

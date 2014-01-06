@@ -5,7 +5,7 @@ import (
 	e "github.com/MG-RAST/AWE/lib/errors"
 	"github.com/MG-RAST/AWE/lib/logger"
 	"github.com/MG-RAST/AWE/lib/logger/event"
-	"github.com/jaredwilkening/goweb"
+	"github.com/MG-RAST/golib/goweb"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -17,6 +17,20 @@ type WorkController struct{}
 // get a workunit by id, read-only
 func (cr *WorkController) Read(id string, cx *goweb.Context) {
 	LogRequest(cx.Request)
+
+	// Gather query params
+	query := &Query{Li: cx.Request.URL.Query()}
+
+	if query.Has("datatoken") && query.Has("client") { //a client is requesting data token for this job
+		//***insert code to authenticate and check ACL***
+		clientid := query.Value("client")
+		token, err := core.QMgr.FetchDataToken(id, clientid)
+		if err != nil {
+			cx.RespondWithErrorMessage("error in getting token for job "+id, http.StatusBadRequest)
+		}
+		cx.RespondWithData(token)
+		return
+	}
 
 	// Load workunit by id
 	workunit, err := core.QMgr.GetWorkById(id)
@@ -61,7 +75,7 @@ func (cr *WorkController) ReadMany(cx *goweb.Context) {
 	workunits, err := core.QMgr.CheckoutWorkunits("FCFS", clientid, 1)
 
 	if err != nil {
-		if err.Error() != e.QueueEmpty && err.Error() != e.NoEligibleWorkunitFound {
+		if err.Error() != e.QueueEmpty && err.Error() != e.NoEligibleWorkunitFound && err.Error() != e.ClientNotFound {
 			logger.Error("Err@work_ReadMany:core.QMgr.GetWorkByFCFS(): " + err.Error() + ";client=" + clientid)
 		}
 		cx.RespondWithErrorMessage(err.Error(), http.StatusBadRequest)
