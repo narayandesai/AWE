@@ -248,70 +248,66 @@ func (qm *ServerMgr) handleWorkStatusChange(notice Notice) (err error) {
 	return
 }
 
-func (qm *ServerMgr) ShowStatus() string {
-	total_task := len(qm.taskMap)
-	queuing_work := len(qm.workQueue.wait)
-	out_work := len(qm.workQueue.checkout)
-	suspend_work := len(qm.workQueue.suspend)
-	total_active_work := len(qm.workQueue.workMap)
-	queuing_task := 0
-	pending_task := 0
-	completed_task := 0
-	suspended_task := 0
-	skipped_task := 0
-	fail_skip_task := 0
+type QueueStatus struct {
+	TotalJobs          int
+	ActiveJobs         int
+	SuspendedJobs      int
+	TotalTasks         int
+	QueuedTasks        int
+	PendingTasks       int
+	CompletedTasks     int
+	SuspendedTasks     int
+	FailedTasks        int
+	TotalWorkunits     int
+	QueuedWorkunits    int
+	ActiveWorkunits    int
+	SuspendedWorkunits int
+	TotalClients       int
+	BusyClients        int
+	IdleClients        int
+	SuspendedClients   int
+	Timestamp          time.Time
+}
+
+func (qm *ServerMgr) ShowStatus() (qs QueueStatus) {
+	qs.ActiveJobs = len(qm.actJobs)
+	qs.SuspendedJobs = len(qm.susJobs)
+	qs.TotalJobs = qs.ActiveJobs + qs.SuspendedJobs
+
+	skipped := 0
+	qs.TotalTasks = len(qm.taskMap)
 	for _, task := range qm.taskMap {
 		if task.State == TASK_STAT_COMPLETED {
-			completed_task += 1
+			qs.CompletedTasks += 1
 		} else if task.State == TASK_STAT_PENDING {
-			pending_task += 1
+			qs.PendingTasks += 1
 		} else if task.State == TASK_STAT_QUEUED {
-			queuing_task += 1
+			qs.QueuedTasks += 1
 		} else if task.State == TASK_STAT_SUSPEND {
-			suspended_task += 1
+			qs.SuspendedTasks += 1
 		} else if task.State == TASK_STAT_SKIPPED {
-			skipped_task += 1
+			skipped += 1
 		} else if task.State == TASK_STAT_FAIL_SKIP {
-			fail_skip_task += 1
+			qs.FailedTasks += 1
 		}
 	}
-	total_task -= skipped_task // user doesn't see skipped tasks
-	in_progress_job := len(qm.actJobs)
-	suspend_job := len(qm.susJobs)
-	total_job := in_progress_job + suspend_job
-	busy_client := 0
-	idle_client := 0
-	suspend_client := 0
+	qs.TotalTasks -= skipped // user doesn't see skipped tasks
+	qs.TotalWorkunits = len(qm.workQueue.workMap)
+	qs.QueuedWorkunits = len(qm.workQueue.wait)
+	qs.ActiveWorkunits = len(qm.workQueue.checkout)
+	qs.SuspendedWorkunits = len(qm.workQueue.suspend)
+	qs.TotalClients = len(qm.clientMap)
 	for _, client := range qm.clientMap {
 		if client.Status == CLIENT_STAT_SUSPEND {
-			suspend_client += 1
+			qs.SuspendedClients += 1
 		} else if client.IsBusy() {
-			busy_client += 1
+			qs.BusyClients += 1
 		} else {
-			idle_client += 1
+			qs.IdleClients += 1
 		}
 	}
-
-	statMsg := "++++++++AWE server queue status++++++++\n" +
-		fmt.Sprintf("total jobs ............... %d\n", total_job) +
-		fmt.Sprintf("    in-progress:      (%d)\n", in_progress_job) +
-		fmt.Sprintf("    suspended:        (%d)\n", suspend_job) +
-		fmt.Sprintf("total tasks .............. %d\n", total_task) +
-		fmt.Sprintf("    queuing:          (%d)\n", queuing_task) +
-		fmt.Sprintf("    pending:          (%d)\n", pending_task) +
-		fmt.Sprintf("    completed:        (%d)\n", completed_task) +
-		fmt.Sprintf("    suspended:        (%d)\n", suspended_task) +
-		fmt.Sprintf("    failed & skipped: (%d)\n", fail_skip_task) +
-		fmt.Sprintf("total workunits .......... %d\n", total_active_work) +
-		fmt.Sprintf("    queuing:          (%d)\n", queuing_work) +
-		fmt.Sprintf("    checkout:         (%d)\n", out_work) +
-		fmt.Sprintf("    suspended:        (%d)\n", suspend_work) +
-		fmt.Sprintf("total clients ............ %d\n", len(qm.clientMap)) +
-		fmt.Sprintf("    busy:             (%d)\n", busy_client) +
-		fmt.Sprintf("    idle:             (%d)\n", idle_client) +
-		fmt.Sprintf("    suspend:          (%d)\n", suspend_client) +
-		fmt.Sprintf("---last update: %s\n\n", time.Now())
-	return statMsg
+	qs.Timestamp = time.Now()
+	return
 }
 
 //---end of mgr methods

@@ -63,8 +63,8 @@ func (qm *ProxyMgr) InitMaxJid() (err error) {
 	return
 }
 
-func (qm *ProxyMgr) ShowStatus() string {
-	return ""
+func (qm *ProxyMgr) ShowStatus() (qs QueueStatus) {
+	return
 }
 
 //---end of mgr methods

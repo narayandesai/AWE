@@ -28,8 +28,12 @@ func (cr *QueueController) ReadMany(cx *goweb.Context) {
 	// Gather query params
 	//	query := &Query{list: cx.Request.URL.Query()}
 
-	msg := core.QMgr.ShowStatus()
-	cx.RespondWithData(msg)
+	msg, err := json.Marshal(core.QMgr.ShowStatus())
+	if err == nil {
+		cx.RespondWithData(string(msg))
+	} else {
+		cx.RespondWithData("Err")
+	}
 }
 
 // PUT: /queue/{id} -> status update

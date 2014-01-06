@@ -46,6 +46,6 @@ type ResourceMgr interface {
 	ClientWorkMgr
 	JobMgr
 	Handle()
-	ShowStatus() string
+	ShowStatus() QueueStatus
 	Timer()
 }
